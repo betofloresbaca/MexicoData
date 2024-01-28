@@ -396,3 +396,9 @@ FodyWeavers.xsd
 
 # JetBrains Rider
 *.sln.iml
+
+# Nuke temporary build directory
+temp/
+
+# Data directory
+resources/
