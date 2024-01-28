@@ -1,6 +1,6 @@
 ﻿namespace MexicoData.ZipCodes.Models
 {
-    public class Entry
+    public class ZipCodeEntry
     {
         public string ZipCode { get; set; }
 
@@ -12,9 +12,9 @@
 
         public State State { get; set; }
 
-        public SummaryEntry GetSummary()
+        public ZipCodeEntrySummary GetSummary()
         {
-            return new SummaryEntry
+            return new ZipCodeEntrySummary
             {
                 ZipCode = ZipCode,
                 Settlement = Settlement.Name,

@@ -1,6 +1,6 @@
 ﻿namespace MexicoData.ZipCodes.Models
 {
-    public class SummaryEntry
+    public class ZipCodeEntrySummary
     {
         public string ZipCode { get; set; }
 
