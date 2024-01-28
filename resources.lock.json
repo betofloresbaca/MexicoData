@@ -1,0 +1,13 @@
+[
+  {
+    "ProjectName": "MexicoData.ZipCodes",
+    "PublishedNuGetVersion": "0.0.0",
+    "ComputedNuGetVersion": null,
+    "Resources": [
+      {
+        "Path": "resources/CPdescargatxt.zip",
+        "Hash": null
+      }
+    ]
+  }
+]
