@@ -1,6 +1,6 @@
 ﻿namespace _build.Models;
 
-internal record ResourceHash
+internal record Resource
 {
     public string Path { get; init; }
 

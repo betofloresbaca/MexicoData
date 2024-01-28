@@ -64,12 +64,10 @@
           "items": {
             "type": "string",
             "enum": [
+              "Clean",
               "Compile",
-              "CopyZipCodesDb",
-              "CreateZipCodesDb",
-              "LoadProjectLock",
-              "UnzipCodesCsv",
-              "UpdateProjectLock"
+              "UpdateProjectLock",
+              "UpdateZipCodesDb"
             ]
           }
         },
@@ -79,12 +77,10 @@
           "items": {
             "type": "string",
             "enum": [
+              "Clean",
               "Compile",
-              "CopyZipCodesDb",
-              "CreateZipCodesDb",
-              "LoadProjectLock",
-              "UnzipCodesCsv",
-              "UpdateProjectLock"
+              "UpdateProjectLock",
+              "UpdateZipCodesDb"
             ]
           }
         },

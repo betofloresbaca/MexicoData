@@ -11,65 +11,57 @@ using _build.Utils;
 
 class Build : NukeBuild
 {
-    private List<ProjectDependencies> ProjectDependencies { get; set; }
+    private List<Project> Projects;
+    private Dictionary<string, Project> ProjectsLookup;
 
     private AbsolutePath zipCodesCsvPath;
 
     public static int Main() => Execute<Build>(x => x.Compile);
 
-    Target LoadProjectLock =>
+    Target UpdateProjectLock =>
         _ =>
             _.Executes(async () =>
             {
-                ProjectDependencies = await LoadJsonAsync<List<ProjectDependencies>>(
+                Projects = await LoadJsonAsync<List<Project>>(
                     RootDirectory / "resources.lock.json"
                 );
+                ProjectsLookup = Projects.ToDictionary(x => x.ProjectName);
                 Log.Information(
                     "Loaded projects dependencies: {0}",
-                    ProjectDependencies.Select(x => x.ProjectName)
+                    Projects.Select(x => x.ProjectName)
                 );
+                bool hashChanges = false;
+                foreach (var project in Projects)
+                {
+                    foreach (var resource in project.Resources)
+                    {
+                        string computedHash = (RootDirectory / resource.Path).GetFileHash();
+                        if (computedHash != resource.Hash)
+                        {
+                            resource.Hash = computedHash;
+                            Log.Information(
+                                "New resource version: {0} -- {1}",
+                                project.ProjectName,
+                                resource.Path
+                            );
+                            hashChanges = true;
+                        }
+                    }
+                    var nugetVersion = NuGetVersion.Parse(project.PublishedNuGetVersion);
+                    var newNugetVersion = new NuGetVersion(
+                        nugetVersion.Major,
+                        nugetVersion.Minor,
+                        nugetVersion.Patch + 1
+                    );
+                    project.ComputedNuGetVersion = newNugetVersion.ToString();
+                }
+                if (hashChanges)
+                {
+                    await SaveJsonAsync(Projects, RootDirectory / "resources.lock.json");
+                }
             });
 
-    Target UpdateProjectLock =>
-        _ =>
-            _.DependsOn(LoadProjectLock)
-                .Executes(async () =>
-                {
-                    bool hashChanges = false;
-                    foreach (var project in ProjectDependencies)
-                    {
-                        foreach (var resource in project.Resources)
-                        {
-                            string computedHash = (RootDirectory / resource.Path).GetFileHash();
-                            if (computedHash != resource.Hash)
-                            {
-                                resource.Hash = computedHash;
-                                Log.Information(
-                                    "New resource version: {0} -- {1}",
-                                    project.ProjectName,
-                                    resource.Path
-                                );
-                                hashChanges = true;
-                            }
-                        }
-                        var nugetVersion = NuGetVersion.Parse(project.PublishedNuGetVersion);
-                        var newNugetVersion = new NuGetVersion(
-                            nugetVersion.Major,
-                            nugetVersion.Minor,
-                            nugetVersion.Patch + 1
-                        );
-                        project.ComputedNuGetVersion = newNugetVersion.ToString();
-                    }
-                    if (hashChanges)
-                    {
-                        await SaveJsonAsync(
-                            ProjectDependencies,
-                            RootDirectory / "resources.lock.json"
-                        );
-                    }
-                });
-
-    Target UnzipCodesCsv =>
+    Target UpdateZipCodesDb =>
         _ =>
             _.DependsOn(UpdateProjectLock)
                 .Executes(() =>
@@ -77,30 +69,19 @@ class Build : NukeBuild
                     var tempDir = MakeTempDirectory("zipcodes");
                     (RootDirectory / "resources" / "CPdescargatxt.zip").UnZipTo(tempDir);
                     zipCodesCsvPath = tempDir / "CPdescarga.txt";
-                });
-
-    Target CreateZipCodesDb =>
-        _ =>
-            _.DependsOn(UnzipCodesCsv)
-                .Executes(() =>
-                {
                     var csv = new Csv(zipCodesCsvPath, "|", 1);
                     var data = csv.Rows().Select(ParseCsvEntryRow);
-                    using var db = new LiteDatabase(zipCodesCsvPath.Parent / "data.db");
-                    var entriesCollection = db.GetCollection<ZipCodeEntry>("entries");
-                    entriesCollection.InsertBulk(data);
-                    entriesCollection.EnsureIndex(x => x.ZipCode);
-                    entriesCollection.EnsureIndex(x => x.Settlement.Name);
-                    entriesCollection.EnsureIndex(x => x.Municipality.Name);
-                    entriesCollection.EnsureIndex(x => x.City.Name);
-                    entriesCollection.EnsureIndex(x => x.State.Name);
-                });
-
-    Target CopyZipCodesDb =>
-        _ =>
-            _.DependsOn(CreateZipCodesDb)
-                .Executes(() =>
-                {
+                    using (LiteDatabase db = new(zipCodesCsvPath.Parent / "data.db"))
+                    {
+                        ILiteCollection<ZipCodeEntry> entriesCollection =
+                            db.GetCollection<ZipCodeEntry>("entries");
+                        entriesCollection.InsertBulk(data);
+                        entriesCollection.EnsureIndex(x => x.ZipCode);
+                        entriesCollection.EnsureIndex(x => x.Settlement.Name);
+                        entriesCollection.EnsureIndex(x => x.Municipality.Name);
+                        entriesCollection.EnsureIndex(x => x.City.Name);
+                        entriesCollection.EnsureIndex(x => x.State.Name);
+                    }
                     (
                         RootDirectory / "src" / "MexicoData.ZipCodes" / "Data" / "data.db"
                     ).DeleteFile();
@@ -111,7 +92,7 @@ class Build : NukeBuild
 
     Target Compile =>
         _ =>
-            _.DependsOn(CopyZipCodesDb)
+            _.DependsOn(UpdateZipCodesDb)
                 .Executes(() =>
                 {
                     var buildSettings = new DotNetBuildSettings()
@@ -134,6 +115,24 @@ class Build : NukeBuild
                         .SetOutputDirectory(RootDirectory / "artifacts");
                     DotNetTasks.DotNetPack(packSettings);
                 });
+
+    Target Clean =>
+        _ =>
+            _.Executes(() =>
+            {
+                (RootDirectory / "temp").DeleteDirectory();
+                Log.Information("Deleted temporary directory");
+                (RootDirectory / "artifacts").DeleteDirectory();
+                Log.Information("Deleted artifacts directory");
+                var cleanSettings = new DotNetCleanSettings()
+                    .SetProject(
+                        RootDirectory / "src" / "MexicoData.ZipCodes" / "MexicoData.ZipCodes.csproj"
+                    )
+                    .SetConfiguration("Release")
+                    .SetVerbosity(DotNetVerbosity.quiet);
+                DotNetTasks.DotNetClean(cleanSettings);
+                Log.Information("Cleaned MexicoData.ZipCodes project");
+            });
 
     private async Task<T> LoadJsonAsync<T>(AbsolutePath filePath)
     {

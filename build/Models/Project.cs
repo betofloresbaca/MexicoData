@@ -1,6 +1,6 @@
 ﻿namespace _build.Models;
 
-internal record ProjectDependencies
+internal record Project
 {
     public string ProjectName { get; init; }
 
@@ -8,5 +8,5 @@ internal record ProjectDependencies
 
     public string ComputedNuGetVersion { get; set; }
 
-    public List<ResourceHash> Resources { get; init; }
+    public List<Resource> Resources { get; init; }
 }
