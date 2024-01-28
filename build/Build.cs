@@ -4,6 +4,7 @@ using MexicoData.ZipCodes.Models;
 using NuGet.Versioning;
 using Nuke.Common;
 using Nuke.Common.IO;
+using Nuke.Common.Tools.DotNet;
 using Serilog;
 using _build.Models;
 using _build.Utils;
@@ -86,7 +87,7 @@ class Build : NukeBuild
                     var csv = new Csv(zipCodesCsvPath, "|", 1);
                     var data = csv.Rows().Select(ParseCsvEntryRow);
                     using var db = new LiteDatabase(zipCodesCsvPath.Parent / "data.db");
-                    var entriesCollection = db.GetCollection<Entry>("entries");
+                    var entriesCollection = db.GetCollection<ZipCodeEntry>("entries");
                     entriesCollection.InsertBulk(data);
                     entriesCollection.EnsureIndex(x => x.ZipCode);
                     entriesCollection.EnsureIndex(x => x.Settlement.Name);
@@ -95,7 +96,44 @@ class Build : NukeBuild
                     entriesCollection.EnsureIndex(x => x.State.Name);
                 });
 
-    Target Compile => _ => _.DependsOn(CreateZipCodesDb).Executes(() => { });
+    Target CopyZipCodesDb =>
+        _ =>
+            _.DependsOn(CreateZipCodesDb)
+                .Executes(() =>
+                {
+                    (
+                        RootDirectory / "src" / "MexicoData.ZipCodes" / "Data" / "data.db"
+                    ).DeleteFile();
+                    (zipCodesCsvPath.Parent / "data.db").MoveToDirectory(
+                        RootDirectory / "src" / "MexicoData.ZipCodes" / "Data"
+                    );
+                });
+
+    Target Compile =>
+        _ =>
+            _.DependsOn(CopyZipCodesDb)
+                .Executes(() =>
+                {
+                    var buildSettings = new DotNetBuildSettings()
+                        .SetProjectFile(
+                            RootDirectory
+                                / "src"
+                                / "MexicoData.ZipCodes"
+                                / "MexicoData.ZipCodes.csproj"
+                        )
+                        .SetConfiguration("Release");
+                    DotNetTasks.DotNetBuild(buildSettings);
+                    var packSettings = new DotNetPackSettings()
+                        .SetProject(
+                            RootDirectory
+                                / "src"
+                                / "MexicoData.ZipCodes"
+                                / "MexicoData.ZipCodes.csproj"
+                        )
+                        .SetConfiguration("Release")
+                        .SetOutputDirectory(RootDirectory / "artifacts");
+                    DotNetTasks.DotNetPack(packSettings);
+                });
 
     private async Task<T> LoadJsonAsync<T>(AbsolutePath filePath)
     {
@@ -121,9 +159,9 @@ class Build : NukeBuild
         return dir;
     }
 
-    private Entry ParseCsvEntryRow(Dictionary<string, string> row)
+    private ZipCodeEntry ParseCsvEntryRow(Dictionary<string, string> row)
     {
-        return new Entry
+        return new ZipCodeEntry
         {
             ZipCode = row["d_codigo"],
             Settlement = new Settlement
